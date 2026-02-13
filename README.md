@@ -37,9 +37,7 @@ HalfetGetOrder
 ```
 HalfetGetOrder
 ├─ build.bat
-├─ data
 ├─ entry.py
-├─ godo_add_goods_all.json
 ├─ godo_goods_all.json
 ├─ icon
 │  └─ app.ico
@@ -48,8 +46,6 @@ HalfetGetOrder
 └─ src
    └─ halfetgetorder
       ├─ app.py
-      ├─ build_godo_add_goods_all.py
-      ├─ build_godo_goods_all.py
       ├─ config.py
       ├─ coupang.py
       ├─ godo.py
@@ -58,25 +54,36 @@ HalfetGetOrder
       ├─ keys.py
       ├─ resources
       │  └─ godo_add_goods.json
+      ├─ update_keys.py
       ├─ utils.py
       ├─ __init__.py
       └─ __main__.py
 
 ```
 
-## 설치 및 실행
 
-### 1. 파이썬으로 실행 (개발용)
-cd HalfetGetOrder
-.\venv\Scripts\activate
-cd src
-python -m halfetgetorder
+---
+## 설치 및 실행준비
 
-### 2. EXE 파일 사용(배포용)
+### 1. 가상환경 생성
 
+REM .venv 폴더에 가상환경 생성 (권장)
+python -m venv .venv
 
+### 2. requirements 적용
+pip install --upgrade pip
+pip install -r requirements.txt
+
+### 2. 파이썬으로 실행 (개발용)
+.\.venv\Scripts\activate
+python entry.py
+
+### 3. build.bat 빌드 후 EXE 파일 사용(배포용)
+
+---
 ## 파일 배포
 ```
 1. pyinstaller --onefile --name HalfetGetOrder --icon=icon/app.ico entry.py
 2. .\build.bat
 ```
+
