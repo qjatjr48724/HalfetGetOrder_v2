@@ -65,9 +65,11 @@ def create_orders_sheet():
         '수취인 이름',      # E
         '상품명 + 옵션명',  # F
         '수량',             # G
-        '등록옵션명',       # H (기존 I)
-        '배송메세지',       # I (기존 J)
+        '등록옵션명',       # H
+        '출고예정일',       # I  ← 새로 추가
+        '배송메세지',       # J
     ]
+
     ws.append(headers)
     for c in ws[1]:
         c.fill = header_fill
@@ -97,7 +99,7 @@ def create_orders_workbook(
     return wb, ws
 
 
-def apply_border_block(ws, start_row, end_row, start_col=1, end_col=9):
+def apply_border_block(ws, start_row, end_row, start_col=1, end_col=10):
     for r in range(start_row, end_row + 1):
         for c in range(start_col, end_col + 1):
             ws.cell(row=r, column=c).border = Border(
@@ -105,7 +107,7 @@ def apply_border_block(ws, start_row, end_row, start_col=1, end_col=9):
             )
 
 
-def apply_thick_bottom(ws, block_start, block_end, start_col=1, end_col=9):
+def apply_thick_bottom(ws, block_start, block_end, start_col=1, end_col=10):
     for c in range(start_col, end_col + 1):
         cell = ws.cell(row=block_end, column=c)
         cell.border = Border(
@@ -145,8 +147,10 @@ def finalize_orders_sheet(ws):
         '상품명 + 옵션명': 65,   # F열 65
         '수량': 5,               # G열 5
         '등록옵션명': 25,        # H열 25
-        '배송메세지': 35         # I열 35
+        '출고예정일': 16,        # I열 16 (신규)
+        '배송메세지': 35         # J열 35
     }
+
     headers = [cell.value for cell in ws[1]]
 
     for col in ws.columns:
@@ -202,10 +206,11 @@ def finalize_orders_sheet(ws):
 
 
 
-        # 상품명+옵션명 열(F), 배송메세지 열(I) 기준으로 행 높이 조정
+    # 상품명+옵션명 열(F), 배송메세지 열(J) 기준으로 행 높이 조정
     for r in range(2, ws.max_row + 1):
-        prod_cell = ws.cell(row=r, column=6)  # F열
-        memo_cell = ws.cell(row=r, column=9)  # I열 (기존 10 → 9)
+        prod_cell = ws.cell(row=r, column=6)   # F열
+        memo_cell = ws.cell(row=r, column=10)  # J열
+
 
         pclen = visual_len(prod_cell.value)
         mlen = visual_len(memo_cell.value)
@@ -237,8 +242,9 @@ def finalize_orders_sheet(ws):
             fill=fill_checked
         )
 
-        # A2 ~ I{마지막 행}까지 적용
-        ws.conditional_formatting.add(f"A2:I{last_row}", rule)
+        # A2 ~ J{마지막 행}까지 적용
+        ws.conditional_formatting.add(f"A2:J{last_row}", rule)
+
 
     # 전체 글꼴 크기를 12로 통일 (기존 bold/italic, 색상 등은 유지)
     for row in ws.iter_rows():
@@ -271,7 +277,9 @@ def append_coupang_block(ws, coupang_orders):
 
         item_names = []
         total_qty = 0
-        for item in od.get('orderItems', []):
+        items = od.get('orderItems', []) or []
+
+        for item in items:
             name = (
                 item.get('sellerProductName')
                 or item.get('vendorItemName')
@@ -294,7 +302,6 @@ def append_coupang_block(ws, coupang_orders):
 
         # 등록옵션명 (쿠팡 기준: 상품명 사용)
         reg_option_name = ""
-        items = od.get('orderItems') or []
         if items:
             first_item = items[0] or {}
             reg_option_name = (
@@ -304,27 +311,42 @@ def append_coupang_block(ws, coupang_orders):
                 or ""
             )
 
+        # 출고예정일 (orderItems[*].estimatedShippingDate 중 가장 이른 날짜 사용)
+        est_dates = [
+            (it.get("estimatedShippingDate") or "").strip()
+            for it in items
+            if (it.get("estimatedShippingDate") or "").strip()
+        ]
+        est_shipping_display = ""
+        if est_dates:
+            # ISO 날짜 문자열 기준으로 가장 빠른 날짜 선택
+            est_min = min(est_dates)
+            est_shipping_display = _fmt_dt(est_min)
+
+
         # 쿠팡 배송메세지: parcelPrintMessage
         coupang_memo = od.get('parcelPrintMessage', '') or ''
 
         # A:플랫폼, B:주문일시, C:총금액, D:체크, E:수취인, F:상품+옵션, G:수량,
-        # H:등록옵션명, I:배송메세지
+        # H:등록옵션명, I:출고예정일, J:배송메세지
         ws.append([
             "쿠팡",
             ordered_at,
             total_price_str,
-            "",                # 체크 열
+            "",                   # 체크 열
             receiver_name,
             product_info,
             total_qty,
             reg_option_name,
+            est_shipping_display,  # 새로 추가된 출고예정일
             coupang_memo,
         ])
+
         current_row += 1
 
-        apply_border_block(ws, block_start, current_row - 1, 1, 9)
+        apply_border_block(ws, block_start, current_row - 1, 1, 10)
         merge_receiver_name(ws, block_start, current_row - 1)
-        apply_thick_bottom(ws, block_start, current_row - 1, 1, 9)
+        apply_thick_bottom(ws, block_start, current_row - 1, 1, 10)
 
 
 
@@ -713,8 +735,10 @@ def append_godo_sets(ws, grouped_orders):
                 product_info_parent,
                 (qty or 1),
                 reg_option_value,
-                order_memo if first_parent else ""
+                "",                         # 출고예정일 (고도몰은 비워둠)
+                order_memo if first_parent else "",
             ])
+
             current_row += 1
             first_parent = False
 
@@ -757,7 +781,7 @@ def append_godo_sets(ws, grouped_orders):
             for add in s["children"]:
                 add_name = (add.get('goodsNm') or add.get('goodsNmStandard') or '').strip()
                 add_qty = _to_int(add.get('goodsCnt', 1), 1)
-                ws.append(["", "", "", "", "", f"+ {add_name}", add_qty, "", ""])
+                ws.append(["", "", "", "", "", f"+ {add_name}", add_qty, "", "", ""])
                 current_row += 1
                 crow = current_row - 1
                 ccell = ws.cell(row=crow, column=6)
@@ -768,9 +792,10 @@ def append_godo_sets(ws, grouped_orders):
                     indent=1
                 )
 
-        apply_border_block(ws, block_start, current_row - 1, 1, 9)
+        apply_border_block(ws, block_start, current_row - 1, 1, 10)
         merge_receiver_name(ws, block_start, current_row - 1)
-        apply_thick_bottom(ws, block_start, current_row - 1, 1, 9)
+        apply_thick_bottom(ws, block_start, current_row - 1, 1, 10)
+
 
 
 
