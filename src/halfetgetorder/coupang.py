@@ -1,5 +1,5 @@
 
-import hmac, hashlib, urllib.parse, urllib.request, urllib.error, ssl, json, time, os
+import hmac, hashlib, urllib.parse, urllib.request, urllib.error, ssl, json, time, os, gzip
 from datetime import date, datetime, timedelta
 from .config import CP_ACCESS, CP_SECRET
 
@@ -55,16 +55,40 @@ def fetch_orders(created_from=None, created_to=None):
         resp = urllib.request.urlopen(req, context=ctx, timeout=DEFAULT_TIMEOUT)
         return resp.read().decode(resp.headers.get_content_charset() or "utf-8")
     except urllib.error.HTTPError as e:
-        # 쿠팡이 내려주는 에러 본문까지 같이 출력
+        # 쿠팡이 내려주는 에러 본문까지 같이 출력 (gzip 등 압축도 해제 시도)
         try:
-            err_body = e.read().decode("utf-8", errors="replace")
+            raw = e.read()
+
+            # 응답이 gzip 압축이면 먼저 풀어준다
+            content_encoding = (e.headers.get("Content-Encoding") or "").lower()
+            if "gzip" in content_encoding:
+                try:
+                    raw = gzip.decompress(raw)
+                except Exception:
+                    # 압축 해제 실패해도 그대로 진행
+                    pass
+
+            # 인코딩 추측: header의 charset -> utf-8 -> cp949 순서로 시도
+            encoding = "utf-8"
+            ctype = e.headers.get("Content-Type") or ""
+            if "charset=" in ctype:
+                encoding = ctype.split("charset=", 1)[1].split(";")[0].strip()
+
+            for enc in (encoding, "utf-8", "cp949"):
+                try:
+                    err_body = raw.decode(enc)
+                    break
+                except Exception:
+                    err_body = raw.decode("utf-8", errors="replace")
         except Exception:
             err_body = "<본문 읽기 실패>"
+
         print("❌ 쿠팡 API HTTP 오류:")
         print("   - 상태코드:", e.code)
         print("   - 사유:", e.reason)
         print("   - 응답본문:", err_body)
         return ""
+
 
     except urllib.error.URLError as e:
         print("❌ 쿠팡 API 네트워크 오류:", e.reason)
