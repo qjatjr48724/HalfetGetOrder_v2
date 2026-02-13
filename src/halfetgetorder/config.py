@@ -1,7 +1,15 @@
 
 import os, sys
 from pathlib import Path
-from dotenv import load_dotenv
+
+# dotenv가 없더라도 프로그램이 죽지 않도록 방어 코드
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    def load_dotenv(*args, **kwargs):
+        # .env 로딩은 건너뛰지만, exe가 바로 죽지는 않게 처리
+        return False
+
 
 def _project_root() -> Path:
     if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):

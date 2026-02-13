@@ -6,15 +6,40 @@ REM 스크립트 기준 디렉터리로 이동
 cd /d "%~dp0"
 
 REM ─────────────────────────────────────────
-REM Python / PyInstaller 경로 설정 (venv 가 있으면 우선 사용)
+REM Python / PyInstaller 경로 설정 (.venv 또는 venv 사용)
 REM ─────────────────────────────────────────
-set "PYTHON_EXE=python"
-if exist "venv\Scripts\python.exe" (
-    set "PYTHON_EXE=venv\Scripts\python.exe"
+set "PYTHON_EXE="
+
+REM 1순위: .venv
+if exist "%~dp0.venv\Scripts\python.exe" (
+    set "PYTHON_EXE=%~dp0.venv\Scripts\python.exe"
 )
 
-REM pyinstaller.exe 대신 python -m pyinstaller 형식으로 사용
+REM 2순위: venv (위에서 못 찾았을 때만)
+if not defined PYTHON_EXE if exist "%~dp0venv\Scripts\python.exe" (
+    set "PYTHON_EXE=%~dp0venv\Scripts\python.exe"
+)
+
+if not defined PYTHON_EXE (
+    echo.
+    echo [ERROR] 가상환경을 찾을 수 없습니다.
+    echo   기대하는 경로:
+    echo     %~dp0.venv\Scripts\python.exe
+    echo     또는
+    echo     %~dp0venv\Scripts\python.exe
+    echo.
+    echo 이 폴더에서 한 번만 아래 순서를 실행해 주세요:
+    echo   1^> python -m venv .venv   ^(또는 venv^)
+    echo   2^> .venv\Scripts\activate
+    echo   3^> pip install -r requirements.txt
+    echo.
+    pause
+    goto END
+)
+
+REM pyinstaller.exe 대신 python -m PyInstaller 형식으로 사용
 set "PYINSTALLER_CMD=%PYTHON_EXE% -m PyInstaller"
+
 
 REM ─────────────────────────────────────────
 REM 메인 메뉴
@@ -88,6 +113,20 @@ echo 사용되는 Python     : %PYTHON_EXE%
 echo 사용되는 PyInstaller: %PYINSTALLER_CMD%
 echo.
 
+REM 여기서 한 번 더 requests / dotenv / xmltodict 가
+REM 진짜 이 Python에서 import 되는지 확인
+echo [CHECK] 의존성 모듈 확인 (requests, xmltodict, dotenv)...
+"%PYTHON_EXE%" -c "import requests, xmltodict, dotenv; print('OK: deps loaded')"
+if errorlevel 1 (
+    echo.
+    echo [ERROR] 현재 Python 환경에서 requests / xmltodict / dotenv 를 불러올 수 없습니다.
+    echo        venv 활성화 후 아래 명령으로 설치해 주세요:
+    echo          pip install requests xmltodict python-dotenv
+    echo.
+    pause
+    goto MENU
+)
+
 REM 오늘 날짜 생성 (파일명에 사용)
 for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd"') do set TODAY=%%i
 
@@ -116,8 +155,16 @@ IF NOT EXIST "%ICON_PATH%" (
     goto MENU
 )
 
-REM PyInstaller 빌드
-%PYINSTALLER_CMD% --onefile --name "%INTERNAL_NAME%" --icon="%ICON_PATH%" entry.py
+REM PyInstaller 옵션 한 줄로 정의 (줄바꿈 X)
+set "PYI_OPTS=--onefile --hidden-import=requests --hidden-import=xmltodict --hidden-import=dotenv --name %INTERNAL_NAME% --icon=%ICON_PATH% entry.py"
+
+echo.
+echo [DEBUG] 실행할 명령:
+echo   %PYINSTALLER_CMD% %PYI_OPTS%
+echo.
+
+REM PyInstaller 빌드 실행
+%PYINSTALLER_CMD% %PYI_OPTS%
 
 IF ERRORLEVEL 1 (
     echo.
