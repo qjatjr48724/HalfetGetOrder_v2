@@ -4,6 +4,73 @@ from .config import PARTNER_KEY, GODO_KEY
 from .utils import _as_list, _to_int, _to_float
 
 
+def _extract_receiver_name_from_orderinfo(info: dict) -> str:
+    """
+    고도몰 주문의 orderInfoData에서 수령자 이름을 뽑는다.
+
+    일부 주문에서는 receiverName 키가 누락되거나 필드명이 다른 경우가 있어,
+    여러 후보 키와 (receiver+name 관련) 중첩 필드를 재귀적으로 탐색한다.
+    """
+    if not isinstance(info, dict):
+        return ""
+
+    # 1) 가장 흔한 케이스: receiverName
+    name = (info.get("receiverName") or "").strip()
+    if name:
+        return name
+
+    # 2) 직접적인 필드명 후보들
+    direct_candidates = [
+        "receiverNm",
+        "receiverNameFull",
+        "receiverUserName",
+        "receiverNameKor",
+        "receiverNameKr",
+        "receiverName1",
+        "receiverName2",
+    ]
+    for k in direct_candidates:
+        v = (info.get(k) or "").strip()
+        if v:
+            return v
+
+    # 3) 중첩 receiver 객체에서 name 계열 탐색
+    for receiver_key in ("receiver", "receiverInfo", "rcv", "deliveryReceiver"):
+        receiver_obj = info.get(receiver_key)
+        if not isinstance(receiver_obj, dict):
+            continue
+        for nk in ("name", "receiverName", "receiverNm", "fullName", "userName"):
+            v = (receiver_obj.get(nk) or "").strip()
+            if v:
+                return v
+
+    # 4) 재귀적으로 "receiver" + ("name" 또는 "nm") 류 키를 가진 값을 찾는다.
+    def _predicate(key: str, value: str) -> bool:
+        lk = (key or "").lower()
+        # receiverNm 같은 케이스를 위해 nm도 name처럼 취급
+        return ("receiver" in lk or "rcv" in lk) and ("name" in lk or lk.endswith("nm") or "nm" in lk)
+
+    def _walk(obj):
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                if isinstance(v, str):
+                    sv = v.strip()
+                    if sv and _predicate(str(k), sv):
+                        return sv
+                elif isinstance(v, (dict, list)):
+                    res = _walk(v)
+                    if res:
+                        return res
+        elif isinstance(obj, list):
+            for it in obj:
+                res = _walk(it)
+                if res:
+                    return res
+        return ""
+
+    return _walk(info) or ""
+
+
 def fetch_add_goods_map(refresh=False):
     # 지금은 안 쓰므로 빈 dict
     return {}
@@ -74,7 +141,7 @@ def group_sets(godo_json):
         info = od.get("orderInfoData") or {}
 
         # 수령인 이름
-        name = (info.get("receiverName") or "").strip()
+        name = _extract_receiver_name_from_orderinfo(info)
 
         # 안심번호 처리
         safe_fl = str(info.get("receiverUseSafeNumberFl") or "").strip().lower() == "y"
