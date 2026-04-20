@@ -3,10 +3,16 @@
 
 from pathlib import Path
 import getpass
+import shutil
 
-ROOT = Path(__file__).resolve().parent
-KEYS_PATH = ROOT / "keys.py"
-ENV_PATH = ROOT / ".env"
+PKG_DIR = Path(__file__).resolve().parent
+# 프로젝트 루트: .../HalfetGetOrder
+PROJECT_ROOT = PKG_DIR.parents[2]
+
+KEYS_PATH = PKG_DIR / "keys.py"
+# config.py 가 읽는 위치(프로젝트 루트의 .env)와 동일하게 맞춘다.
+ENV_PATH = PROJECT_ROOT / ".env"
+ENV_EXAMPLE_PATH = PROJECT_ROOT / ".env.example"
 
 
 def mask(v: str, front: int = 4, back: int = 4) -> str:
@@ -66,10 +72,66 @@ def load_env_dict(path: Path) -> dict:
     return data
 
 
+def ensure_env_file():
+    """
+    .env 파일이 없으면 템플릿(.env.example)을 그대로 복사해서 생성한다.
+    템플릿이 없을 경우에는 최소 키 4개만 포함한 기본 틀로 생성한다.
+    """
+    if ENV_PATH.exists():
+        return
+
+    try:
+        if ENV_EXAMPLE_PATH.exists():
+            shutil.copyfile(ENV_EXAMPLE_PATH, ENV_PATH)
+            return
+    except Exception:
+        # 아래 fallback 로직으로 진행
+        pass
+
+    # fallback: 템플릿 파일이 없더라도 동작하도록 기본 틀 생성
+    ENV_PATH.write_text(
+        "## HalfetGetOrder 환경변수\n"
+        "CP_ACCESSKEY=\n"
+        "CP_SECRETKEY=\n"
+        "PARTNER_KEY=\n"
+        "GODO_KEY=\n",
+        encoding="utf-8",
+    )
+
+
 def save_env_dict(path: Path, env: dict):
-    lines = [f"{k}={v}" for k, v in env.items()]
-    text = "\n".join(lines) + "\n"
-    path.write_text(text, encoding="utf-8")
+    """
+    .env를 덮어쓰되, 기존 주석/기타 라인은 최대한 유지하면서
+    key=value 라인만 업데이트한다.
+    """
+    existing_lines: list[str] = []
+    if path.exists():
+        existing_lines = path.read_text(encoding="utf-8").splitlines()
+
+    # 기존에 있던 key 라인 위치를 기억하고 업데이트
+    updated = set()
+    out: list[str] = []
+    for line in existing_lines:
+        raw = line
+        stripped = raw.strip()
+        if not stripped or stripped.startswith("#") or "=" not in raw:
+            out.append(raw)
+            continue
+
+        k, _v = raw.split("=", 1)
+        key = k.strip()
+        if key in env:
+            out.append(f"{key}={env[key]}")
+            updated.add(key)
+        else:
+            out.append(raw)
+
+    # 새로 추가된 key들은 파일 끝에 append
+    for k, v in env.items():
+        if k not in updated:
+            out.append(f"{k}={v}")
+
+    path.write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
 
 
 def main():
@@ -123,6 +185,7 @@ godo_key = "{godo}"
     print("✅ keys.py 를 새 키값으로 저장했습니다.")
 
     # 2) .env 갱신 (로컬에서 디버깅/테스트용)
+    ensure_env_file()
     env = load_env_dict(ENV_PATH)
     env["CP_ACCESSKEY"] = cp_access
     env["CP_SECRETKEY"] = cp_secret

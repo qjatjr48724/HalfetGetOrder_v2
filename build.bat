@@ -88,7 +88,7 @@ call :CHECK_PYTHON
 echo 사용되는 Python: %PYTHON_EXE%
 echo.
 
-"%PYTHON_EXE%" update_keys.py
+"%PYTHON_EXE%" "src\halfetgetorder\update_keys.py"
 
 echo.
 echo [INFO] API 키 변경 작업이 완료되었습니다.
