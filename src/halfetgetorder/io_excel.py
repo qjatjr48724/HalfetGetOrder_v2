@@ -265,9 +265,22 @@ def append_coupang_block(ws, coupang_orders):
 
         total_price = 0.0
         for item in od.get('orderItems', []):
-            price = _to_float(item.get('orderPrice', item.get('price', 0)))
             qty = _to_int(item.get('shippingCount', 1), 1)
-            total_price += price * qty
+            sales_price = _to_float(item.get("salesPrice", 0))
+            order_price = _to_float(item.get("orderPrice", 0))
+            price = _to_float(item.get("price", 0))
+
+            # 쿠팡 응답 기준:
+            # - salesPrice: 단가
+            # - orderPrice: 수량이 반영된 라인 합계인 케이스가 많음
+            # 따라서 우선 salesPrice * qty 로 계산하되,
+            # salesPrice 가 없으면 orderPrice(합계) → price * qty 순서로 fallback.
+            if sales_price > 0:
+                total_price += sales_price * qty
+            elif order_price > 0:
+                total_price += order_price
+            else:
+                total_price += price * qty
         total_price_str = f"{int(total_price):,}원"
 
         receiver_name = (
