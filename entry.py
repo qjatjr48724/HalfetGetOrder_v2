@@ -1,5 +1,5 @@
 # entry.py
-from src.halfetgetorder.app import main
+from src.halfetgetorder.ui import run_gui
 
 if __name__ == "__main__":
-    main()
+    run_gui()
