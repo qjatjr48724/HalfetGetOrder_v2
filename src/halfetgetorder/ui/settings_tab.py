@@ -5,9 +5,10 @@ from __future__ import annotations
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
 
-from ..security import AppStore, ApiKeys, PasswordValidationError, check_admin_password_pair
+from ..security import AppStore, PasswordValidationError, check_admin_password_pair
+from .api_key_dialogs import open_api_key_manager
 from .dialogs import ask_password
-from .layout import form_scroll_body, pack_form
+from .layout import fix_window_size, form_scroll_body, form_section, pack_section
 
 
 class SettingsTab(ctk.CTkFrame):
@@ -22,74 +23,63 @@ class SettingsTab(ctk.CTkFrame):
         scroll.pack(fill="both", expand=True, padx=8, pady=8)
         body = form_scroll_body(scroll)
 
-        # API 키 변경
-        pack_form(
-            ctk.CTkLabel(body, text="API 키 변경", font=ctk.CTkFont(size=15, weight="bold"), anchor="w"),
-            padx=8,
-            pady=(8, 4),
+        # API 키
+        sec_keys = form_section(body, "API 키 변경", pady=(4, 12))
+        pack_section(
+            ctk.CTkButton(sec_keys, text="API 키 관리", width=140, command=self._open_api_key_manager),
+            pady=(0, 8),
         )
-        self.key_entries: dict[str, ctk.CTkEntry] = {}
-        for label, key in [
-            ("쿠팡 ACCESSKEY", "cp_access"),
-            ("쿠팡 SECRETKEY", "cp_secret"),
-            ("고도몰 PARTNER_KEY", "partner"),
-            ("고도몰 GODO_KEY", "godo"),
-        ]:
-            pack_form(ctk.CTkLabel(body, text=label, anchor="w"))
-            e = ctk.CTkEntry(body, width=400, show="*")
-            pack_form(e, pady=(0, 4))
-            self.key_entries[key] = e
-        pack_form(ctk.CTkButton(body, text="API 키 저장", command=self._save_keys), pady=8)
+        pack_section(
+            ctk.CTkButton(
+                sec_keys,
+                text="API 키 연결 복구 (비밀번호만 입력)",
+                command=self._repair_keys,
+            ),
+            pady=(0, 8),
+        )
+        pack_section(
+            ctk.CTkLabel(
+                sec_keys,
+                text="빌드 시 키를 불러오지 못할 때: 위 「연결 복구」를 실행하세요.",
+                text_color="gray",
+                font=ctk.CTkFont(size=12),
+                anchor="w",
+            ),
+        )
 
         # 출력 폴더
-        pack_form(
-            ctk.CTkLabel(body, text="출력 폴더 변경", font=ctk.CTkFont(size=15, weight="bold"), anchor="w"),
-            padx=8,
-            pady=(16, 4),
-        )
-        row = ctk.CTkFrame(body, fg_color="transparent")
-        pack_form(row, fill="x")
+        sec_output = form_section(body, "출력 폴더 변경")
+        row = ctk.CTkFrame(sec_output, fg_color="transparent")
+        pack_section(row, fill="x")
         setup = self.store.load_setup()
         self.output_var = ctk.StringVar(
             value=self.store.format_output_path(setup.get("output_parent", "")),
         )
         ctk.CTkEntry(row, textvariable=self.output_var, width=480).pack(side="left", padx=(0, 8))
         ctk.CTkButton(row, text="찾아보기", width=80, command=self._browse).pack(side="left")
-        pack_form(ctk.CTkButton(body, text="출력 경로 저장", command=self._save_output), pady=8)
+        pack_section(ctk.CTkButton(sec_output, text="출력 경로 저장", command=self._save_output), pady=(8, 0))
 
-        # 비밀번호 변경
-        pack_form(
-            ctk.CTkLabel(body, text="관리자 비밀번호", font=ctk.CTkFont(size=15, weight="bold"), anchor="w"),
-            padx=8,
-            pady=(16, 4),
-        )
-        pack_form(ctk.CTkButton(body, text="비밀번호 변경", command=self._change_password), pady=4)
-        pack_form(
+        # 비밀번호
+        sec_pw = form_section(body, "관리자 비밀번호")
+        pack_section(ctk.CTkButton(sec_pw, text="비밀번호 변경", command=self._change_password), pady=(0, 8))
+        pack_section(
             ctk.CTkButton(
-                body,
+                sec_pw,
                 text="비밀번호 재설정 (분실 시 — API 키 재입력 필요)",
                 fg_color="#9b2226",
                 command=self._reset_password,
             ),
-            pady=4,
         )
 
         # 가이드 (추후)
-        pack_form(
-            ctk.CTkLabel(body, text="연동 가이드", font=ctk.CTkFont(size=15, weight="bold"), anchor="w"),
-            padx=8,
-            pady=(16, 4),
+        sec_guide = form_section(
+            body,
+            "연동 가이드",
+            desc="고도몰·쿠팡 설정 가이드는 추후 업데이트 예정입니다.",
+            pady=(0, 4),
         )
-        pack_form(
-            ctk.CTkLabel(
-                body,
-                text="고도몰·쿠팡 설정 가이드는 추후 업데이트 예정입니다.",
-                text_color="gray",
-                anchor="w",
-            ),
-        )
-        row_g = ctk.CTkFrame(body, fg_color="transparent")
-        pack_form(row_g, pady=8)
+        row_g = ctk.CTkFrame(sec_guide, fg_color="transparent")
+        pack_section(row_g)
         ctk.CTkButton(
             row_g,
             text="고도몰 관리자 (준비 중)",
@@ -103,21 +93,28 @@ class SettingsTab(ctk.CTkFrame):
             width=160,
         ).pack(side="left")
 
-    def _save_keys(self):
-        password = ask_password(self.winfo_toplevel(), title="API 키 저장")
+    def _open_api_key_manager(self):
+        if not self.store.is_keys_configured():
+            messagebox.showwarning(
+                "안내",
+                "저장된 API 키가 없습니다.\n설치 탭에서 API 키를 먼저 등록해 주세요.",
+            )
+            return
+        open_api_key_manager(self.winfo_toplevel(), self.store)
+
+    def _repair_keys(self):
+        if not self.store.needs_local_key_repair() and self.store._keys_local_path.exists():
+            messagebox.showinfo("안내", "API 키 연결이 정상입니다. 복구가 필요하지 않습니다.")
+            return
+        password = ask_password(self.winfo_toplevel(), title="API 키 연결 복구")
         if not password:
             return
-        keys = ApiKeys(
-            cp_accesskey=self.key_entries["cp_access"].get().strip(),
-            cp_secretkey=self.key_entries["cp_secret"].get().strip(),
-            partner_key=self.key_entries["partner"].get().strip(),
-            godo_key=self.key_entries["godo"].get().strip(),
-        )
         try:
-            self.store.save_api_keys(keys, password)
-            for e in self.key_entries.values():
-                e.delete(0, "end")
-            messagebox.showinfo("완료", "API 키가 저장되었습니다.")
+            self.store.repair_local_keys(password)
+            messagebox.showinfo(
+                "완료",
+                "이 PC에서 API 키를 사용할 수 있도록 복구했습니다.\n빌드 탭에서 파일 생성을 다시 시도해 주세요.",
+            )
         except Exception as e:
             messagebox.showerror("오류", str(e))
 
@@ -148,7 +145,7 @@ class SettingsTab(ctk.CTkFrame):
 
         dlg = ctk.CTkToplevel(self.winfo_toplevel())
         dlg.title("새 비밀번호")
-        dlg.geometry("640x240")
+        fix_window_size(dlg, 640, 240)
         dlg.transient(self.winfo_toplevel())
         dlg.grab_set()
 
