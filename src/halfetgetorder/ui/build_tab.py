@@ -9,7 +9,6 @@ from tkinter import messagebox
 
 from ..runner import run_order_job
 from ..security.store import AppStore
-from .dialogs import ask_password
 
 
 class BuildTab(ctk.CTkFrame):
@@ -70,15 +69,12 @@ class BuildTab(ctk.CTkFrame):
         if not setup.get("install_done"):
             messagebox.showwarning("안내", "설치 탭에서 설치를 먼저 완료해 주세요.")
             return
-        if not self.store.is_password_configured() or not self.store.is_keys_configured():
-            messagebox.showwarning("안내", "관리자 비밀번호와 API 키를 먼저 설정해 주세요.")
+        if not self.store.is_keys_configured():
+            messagebox.showwarning("안내", "API 키를 먼저 설정해 주세요.")
             return
 
-        password = ask_password(self.winfo_toplevel(), title="파일 생성 — 비밀번호 확인")
-        if not password:
-            return
         try:
-            keys = self.store.load_api_keys(password)
+            keys = self.store.load_api_keys()
         except Exception as e:
             messagebox.showerror("오류", str(e))
             return

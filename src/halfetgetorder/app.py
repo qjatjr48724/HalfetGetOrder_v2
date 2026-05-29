@@ -20,14 +20,11 @@ def main():
         print(msg)
 
     try:
-        if not store.is_password_configured() or not store.is_keys_configured():
+        if not store.is_keys_configured():
             print("⚠️ 설치가 완료되지 않았습니다. GUI 프로그램에서 설치 탭을 먼저 진행해 주세요.")
             return
 
-        import getpass
-
-        password = getpass.getpass("관리자 비밀번호: ")
-        keys = store.load_api_keys(password)
+        keys = store.load_api_keys()
         run_order_job(store, keys, log=_print_log, progress=lambda _: None)
     finally:
         _pause_before_exit()
