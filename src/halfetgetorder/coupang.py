@@ -1,7 +1,7 @@
 
 import hmac, hashlib, urllib.parse, urllib.request, urllib.error, ssl, json, time, os, gzip
 from datetime import date, datetime, timedelta
-from .config import CP_ACCESS, CP_SECRET
+from . import config
 
 os.environ['TZ'] = 'GMT+0'
 CONTENT_TYPE = "application/json;charset=UTF-8"
@@ -21,9 +21,9 @@ def fetch_orders(created_from=None, created_to=None):
         "status": "INSTRUCT"
     })
     message = datetime_signed + METHOD + cp_path + cp_query
-    signature = hmac.new(CP_SECRET.encode('utf-8'), message.encode('utf-8'), hashlib.sha256).hexdigest()
+    signature = hmac.new(config.CP_SECRET.encode('utf-8'), message.encode('utf-8'), hashlib.sha256).hexdigest()
     authorization = (
-        f"CEA algorithm=HmacSHA256, access-key={CP_ACCESS}, signed-date={datetime_signed}, signature={signature}"
+        f"CEA algorithm=HmacSHA256, access-key={config.CP_ACCESS}, signed-date={datetime_signed}, signature={signature}"
     )
     cp_url = f"{DOMAIN}{cp_path}?{cp_query}"
     req = urllib.request.Request(cp_url)

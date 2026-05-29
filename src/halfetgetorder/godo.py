@@ -1,6 +1,6 @@
 import requests, xmltodict, json
 from datetime import date, timedelta
-from .config import PARTNER_KEY, GODO_KEY
+from . import config
 from .utils import _as_list, _to_int, _to_float
 
 
@@ -84,7 +84,7 @@ def fetch_orders(created_from=None, created_to=None):
 
     url = (
         "https://openhub.godo.co.kr/godomall5/order/Order_Search.php"
-        f"?partner_key={PARTNER_KEY}&key={GODO_KEY}"
+        f"?partner_key={config.PARTNER_KEY}&key={config.GODO_KEY}"
         f"&startDate={created_from}&endDate={created_to}"
         "&dateType=order&orderStatus=g1"
     )
@@ -202,8 +202,8 @@ def fetch_goods_base_specs(goods_no: str) -> tuple[str, str]:
 
     url = "https://openhub.godo.co.kr/godomall5/goods/Goods_Search.php"
     params = {
-        "partner_key": PARTNER_KEY,
-        "key": GODO_KEY,
+        "partner_key": config.PARTNER_KEY,
+        "key": config.GODO_KEY,
         "goodsNo": goods_no,
         "page": 1,
         "size": 1,
