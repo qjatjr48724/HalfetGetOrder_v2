@@ -7,6 +7,7 @@ import customtkinter as ctk
 from ..security.store import AppStore
 from .build_tab import BuildTab
 from .install_tab import InstallTab
+from .layout import fix_window_size
 from .settings_tab import SettingsTab
 
 
@@ -17,8 +18,7 @@ def run_gui():
     store = AppStore()
     app = ctk.CTk()
     app.title("하프전자 주문수집기 v2")
-    app.geometry("720x640")
-    app.minsize(640, 520)
+    fix_window_size(app, 720, 640)
 
     header = ctk.CTkLabel(
         app,
