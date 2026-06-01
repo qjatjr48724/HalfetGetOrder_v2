@@ -22,6 +22,29 @@ ProgressFn = Callable[[float], None]
 MIN_INTERVAL_MINUTES = 2
 
 
+def _save_error_message(path: str, exc: Exception) -> str:
+    if isinstance(exc, PermissionError) or getattr(exc, "errno", None) == 13:
+        name = os.path.basename(path)
+        return (
+            f"「{name}」을(를) 저장할 수 없습니다.\n"
+            "Excel 등에서 해당 파일이 열려 있으면 닫고 다시 「파일 생성」을 눌러 주세요."
+        )
+    return f"{os.path.basename(path)} 저장 실패: {exc}"
+
+
+def _save_workbook(wb, path: str, _log: LogFn) -> str | None:
+    """성공 시 None, 실패 시 사용자용 오류 메시지."""
+    try:
+        wb.save(path)
+        return None
+    except (PermissionError, OSError) as e:
+        if isinstance(e, PermissionError) or getattr(e, "errno", None) == 13:
+            msg = _save_error_message(path, e)
+            _log(f"❌ {msg}")
+            return msg
+        raise
+
+
 def _is_rental_order(od: dict) -> bool:
     rental_keywords = ["렌탈", "대여", "임대"]
     for item in od.get("orderItems", []) or []:
@@ -49,6 +72,7 @@ def run_order_job(
     반환: {"success": bool, "files": [...], "error": str|None}
     """
     result: dict[str, Any] = {"success": False, "files": [], "error": None}
+    save_errors: list[str] = []
 
     def _log(msg: str) -> None:
         if log:
@@ -140,11 +164,15 @@ def run_order_job(
             godo_grouped_orders=grouped,
         )
         order_xlsx = os.path.join(data_dir, f"주문수집_{today}.xlsx")
-        wb_orders.save(order_xlsx)
-        result["files"].append(order_xlsx)
-        _log(f"✅ 저장: {order_xlsx}")
+        err = _save_workbook(wb_orders, order_xlsx, _log)
+        if err is None:
+            result["files"].append(order_xlsx)
+            _log(f"✅ 저장: {order_xlsx}")
+        else:
+            save_errors.append(err)
     except Exception as e:
         _log(f"⚠️ 주문수집 엑셀 오류: {e}")
+        save_errors.append(f"주문수집 엑셀 생성 오류: {e}")
 
     _prog(65)
     _log("대한통운 송장등록 엑셀 생성 중...")
@@ -159,31 +187,52 @@ def run_order_job(
         norm_cp_orders = []
 
     if norm_cp_orders:
-        wb1, _ = create_waybill_workbook(norm_cp_orders)
-        waybill_xlsx = os.path.join(data_dir, f"대한통운 송장등록_{today}.xlsx")
-        wb1.save(waybill_xlsx)
-        result["files"].append(waybill_xlsx)
-        _log(f"✅ 저장: {waybill_xlsx}")
+        try:
+            wb1, _ = create_waybill_workbook(norm_cp_orders)
+            waybill_xlsx = os.path.join(data_dir, f"대한통운 송장등록_{today}.xlsx")
+            err = _save_workbook(wb1, waybill_xlsx, _log)
+            if err is None:
+                result["files"].append(waybill_xlsx)
+                _log(f"✅ 저장: {waybill_xlsx}")
+            else:
+                save_errors.append(err)
+        except Exception as e:
+            _log(f"⚠️ 대한통운 송장등록 엑셀 오류: {e}")
+            save_errors.append(f"대한통운 송장등록 엑셀 오류: {e}")
     else:
         _log("ℹ️ 쿠팡 주문 없음 — 대한통운 송장등록 파일 생략")
 
     _prog(75)
     _log("라벨출력 엑셀 생성 중... (10~30초 소요될 수 있습니다)")
 
-    label_wb, _ = create_label_workbook(
-        coupang_orders=filtered_orders,
-        godo_grouped_orders=grouped,
-        godo_add_goods_map_path=os.path.join(
-            config.project_root(),
-            "godo_add_goods_all.json",
-        ),
-    )
-    label_path = os.path.join(data_dir, f"라벨출력_{today}.xlsx")
-    label_wb.save(label_path)
-    result["files"].append(label_path)
-    _log(f"✅ 저장: {label_path}")
+    try:
+        label_wb, _ = create_label_workbook(
+            coupang_orders=filtered_orders,
+            godo_grouped_orders=grouped,
+            godo_add_goods_map_path=os.path.join(
+                config.project_root(),
+                "godo_add_goods_all.json",
+            ),
+        )
+        label_path = os.path.join(data_dir, f"라벨출력_{today}.xlsx")
+        err = _save_workbook(label_wb, label_path, _log)
+        if err is None:
+            result["files"].append(label_path)
+            _log(f"✅ 저장: {label_path}")
+        else:
+            save_errors.append(err)
+    except Exception as e:
+        _log(f"⚠️ 라벨출력 엑셀 오류: {e}")
+        save_errors.append(f"라벨출력 엑셀 오류: {e}")
 
     _prog(100)
-    _log("모든 작업이 완료되었습니다.")
-    result["success"] = True
+    if save_errors:
+        result["error"] = "\n\n".join(save_errors)
+        if result["files"]:
+            _log("⚠️ 일부 파일만 저장되었습니다.")
+        else:
+            _log("❌ 저장된 파일이 없습니다.")
+    else:
+        _log("모든 작업이 완료되었습니다.")
+    result["success"] = bool(result["files"]) and not save_errors
     return result

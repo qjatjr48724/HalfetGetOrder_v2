@@ -94,10 +94,20 @@ class BuildTab(ctk.CTkFrame):
                     progress=lambda v: self.after(0, lambda val=v: self._set_progress(val)),
                 )
                 if result.get("error"):
-                    self.after(
-                        0,
-                        lambda: messagebox.showwarning("중단", result["error"]),
-                    )
+                    files = result.get("files", [])
+                    if files:
+                        body = (
+                            f"{len(files)}개 파일은 저장되었습니다.\n\n"
+                            + "\n".join(files)
+                            + "\n\n"
+                            + result["error"]
+                        )
+                        self.after(0, lambda b=body: messagebox.showwarning("일부 실패", b))
+                    else:
+                        self.after(
+                            0,
+                            lambda: messagebox.showerror("오류", result["error"]),
+                        )
                 elif result.get("success"):
                     files = result.get("files", [])
                     self.after(

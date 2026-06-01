@@ -108,6 +108,8 @@ def apply_border_block(ws, start_row, end_row, start_col=1, end_col=10):
 
 
 def apply_thick_bottom(ws, block_start, block_end, start_col=1, end_col=10):
+    if block_end < block_start:
+        return
     for c in range(start_col, end_col + 1):
         cell = ws.cell(row=block_end, column=c)
         cell.border = Border(
@@ -126,11 +128,22 @@ def apply_thick_bottom(ws, block_start, block_end, start_col=1, end_col=10):
     )
 
 
-def merge_receiver_name(ws, start_row, end_row):
+def merge_receiver_name(ws, start_row, end_row, name: str | None = None):
     # 수취인 이름이 이제 5열(E)이므로 5번 컬럼 기준으로 병합
+    if end_row < start_row:
+        return
+    top = ws.cell(row=start_row, column=5)
+    if name and str(name).strip():
+        top.value = str(name).strip()
+    elif not (top.value and str(top.value).strip()):
+        for r in range(start_row + 1, end_row + 1):
+            val = ws.cell(row=r, column=5).value
+            if val and str(val).strip():
+                top.value = str(val).strip()
+                break
     if end_row > start_row:
         ws.merge_cells(start_row=start_row, start_column=5, end_row=end_row, end_column=5)
-        ws.cell(row=start_row, column=5).alignment = Alignment(
+        top.alignment = Alignment(
             horizontal='center',
             vertical='center'
         )
@@ -679,16 +692,19 @@ def append_godo_sets(ws, grouped_orders):
         optionInfo(옵션명: 값 ...)
       이렇게 줄바꿈해서 표시.
     """
-    current_row = ws.max_row + 1
-
     # 자사몰 주문은 역순(최근 주문이 아래로)
     for grp in reversed(grouped_orders):
-        block_start = current_row
+        if not grp.get("sets"):
+            continue
+
+        block_start = ws.max_row + 1
         first_parent = True
+        receiver_name = (grp.get("receiver") or {}).get("name") or ""
+        ordered_at = _fmt_dt(grp.get("orderedAt") or "")
 
         for s in grp["sets"]:
             p = s["parent"]
-            goodsCd = (p.get('goodsCd') or '').strip()
+            goodsCd = (p.get('goodsCd') or p.get('goodsModel') or '').strip()
             goodsNm = (p.get('goodsNm') or p.get('goodsNmStandard') or '').strip()
             qty = _to_int(p.get('goodsCnt', 1), 1)
             price = _to_float(p.get('goodsPrice', 0.0), 0.0)
@@ -741,10 +757,10 @@ def append_godo_sets(ws, grouped_orders):
 
             ws.append([
                 "고도몰",
-                grp["orderedAt"] if first_parent else "",
+                ordered_at if first_parent else "",
                 total_price_str,
                 "",   # 체크 열
-                grp["receiver"]["name"] if first_parent else "",
+                receiver_name if first_parent else "",
                 product_info_parent,
                 (qty or 1),
                 reg_option_value,
@@ -752,11 +768,10 @@ def append_godo_sets(ws, grouped_orders):
                 order_memo if first_parent else "",
             ])
 
-            current_row += 1
             first_parent = False
+            prow = ws.max_row
 
             # 부모 셀 스타일링 (6열)
-            prow = current_row - 1
             pcell = ws.cell(row=prow, column=6)
 
             if option_info and RICH_TEXT_AVAILABLE:
@@ -795,8 +810,7 @@ def append_godo_sets(ws, grouped_orders):
                 add_name = (add.get('goodsNm') or add.get('goodsNmStandard') or '').strip()
                 add_qty = _to_int(add.get('goodsCnt', 1), 1)
                 ws.append(["", "", "", "", "", f"+ {add_name}", add_qty, "", "", ""])
-                current_row += 1
-                crow = current_row - 1
+                crow = ws.max_row
                 ccell = ws.cell(row=crow, column=6)
                 ccell.font = Font(italic=True)
                 ccell.alignment = Alignment(
@@ -805,9 +819,11 @@ def append_godo_sets(ws, grouped_orders):
                     indent=1
                 )
 
-        apply_border_block(ws, block_start, current_row - 1, 1, 10)
-        merge_receiver_name(ws, block_start, current_row - 1)
-        apply_thick_bottom(ws, block_start, current_row - 1, 1, 10)
+        block_end = ws.max_row
+        if block_end >= block_start:
+            apply_border_block(ws, block_start, block_end, 1, 10)
+            merge_receiver_name(ws, block_start, block_end, receiver_name)
+            apply_thick_bottom(ws, block_start, block_end, 1, 10)
 
 
 

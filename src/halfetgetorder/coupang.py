@@ -1,9 +1,9 @@
 
-import hmac, hashlib, urllib.parse, urllib.request, urllib.error, ssl, json, time, os, gzip
-from datetime import date, datetime, timedelta
+import hmac, hashlib, urllib.parse, urllib.request, urllib.error, ssl, json, time, gzip
+from datetime import date, timedelta
+
 from . import config
 
-os.environ['TZ'] = 'GMT+0'
 CONTENT_TYPE = "application/json;charset=UTF-8"
 METHOD = "GET"
 DOMAIN = "https://api-gateway.coupang.com"
@@ -13,7 +13,12 @@ def fetch_orders(created_from=None, created_to=None):
     if created_from is None: created_from = str(date.today() - timedelta(days=7))
     if created_to   is None: created_to   = str(date.today())
 
-    datetime_signed = time.strftime('%y%m%d') + 'T' + time.strftime('%H%M%S') + 'Z'
+    datetime_signed = (
+        time.strftime("%y%m%d", time.gmtime())
+        + "T"
+        + time.strftime("%H%M%S", time.gmtime())
+        + "Z"
+    )
     cp_path = f"/v2/providers/openapi/apis/api/v4/vendors/{VENDOR_ID}/ordersheets"
     cp_query = urllib.parse.urlencode({
         "createdAtFrom": created_from,
