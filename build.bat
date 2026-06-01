@@ -5,9 +5,9 @@ SETLOCAL
 REM 스크립트 기준 디렉터리로 이동
 cd /d "%~dp0"
 
-REM ─────────────────────────────────────────
+REM -----------------------------------------
 REM Python / PyInstaller 경로 설정 (.venv 또는 venv 사용)
-REM ─────────────────────────────────────────
+REM -----------------------------------------
 set "PYTHON_EXE="
 
 REM 1순위: .venv
@@ -41,9 +41,9 @@ REM pyinstaller.exe 대신 python -m PyInstaller 형식으로 사용
 set "PYINSTALLER_CMD=%PYTHON_EXE% -m PyInstaller"
 
 
-REM ─────────────────────────────────────────
+REM -----------------------------------------
 REM 메인 메뉴
-REM ─────────────────────────────────────────
+REM -----------------------------------------
 :MENU
 cls
 echo ========================================
@@ -74,9 +74,9 @@ pause
 goto MENU
 
 
-REM ─────────────────────────────────────────
+REM -----------------------------------------
 REM 2. API 키 변경
-REM ─────────────────────────────────────────
+REM -----------------------------------------
 :CHANGE_KEYS
 cls
 echo [INFO] API 키 변경을 시작합니다.
@@ -97,9 +97,9 @@ pause
 goto MENU
 
 
-REM ─────────────────────────────────────────
+REM -----------------------------------------
 REM 1. 빌드
-REM ─────────────────────────────────────────
+REM -----------------------------------------
 :BUILD
 cls
 echo [INFO] PyInstaller 빌드를 시작합니다.
@@ -115,13 +115,13 @@ echo.
 
 REM 여기서 한 번 더 requests / dotenv / xmltodict 가
 REM 진짜 이 Python에서 import 되는지 확인
-echo [CHECK] 의존성 모듈 확인 (requests, xmltodict, dotenv)...
-"%PYTHON_EXE%" -c "import requests, xmltodict, dotenv; print('OK: deps loaded')"
+echo [CHECK] 의존성 모듈 확인 (GUI + API + 암호화)...
+"%PYTHON_EXE%" -c "import requests, xmltodict, dotenv, customtkinter, cryptography, bcrypt; print('OK: deps loaded')"
 if errorlevel 1 (
     echo.
-    echo [ERROR] 현재 Python 환경에서 requests / xmltodict / dotenv 를 불러올 수 없습니다.
+    echo [ERROR] 현재 Python 환경에서 필수 패키지를 불러올 수 없습니다.
     echo        venv 활성화 후 아래 명령으로 설치해 주세요:
-    echo          pip install requests xmltodict python-dotenv
+    echo          pip install -r requirements.txt
     echo.
     pause
     goto MENU
@@ -155,16 +155,18 @@ IF NOT EXIST "%ICON_PATH%" (
     goto MENU
 )
 
-REM PyInstaller 옵션 한 줄로 정의 (줄바꿈 X)
-set "PYI_OPTS=--onefile --hidden-import=requests --hidden-import=xmltodict --hidden-import=dotenv --name %INTERNAL_NAME% --icon=%ICON_PATH% entry.py"
-
+REM PyInstaller v2 (GUI, --windowed=주문수집기 exe만 콘솔 숨김, keys.py 미포함)
 echo.
-echo [DEBUG] 실행할 명령:
-echo   %PYINSTALLER_CMD% %PYI_OPTS%
+echo [DEBUG] PyInstaller 빌드 실행...
 echo.
 
-REM PyInstaller 빌드 실행
-%PYINSTALLER_CMD% %PYI_OPTS%
+%PYINSTALLER_CMD% --onefile --windowed --paths=src ^
+ --hidden-import=requests --hidden-import=xmltodict --hidden-import=dotenv ^
+ --hidden-import=customtkinter --collect-all customtkinter ^
+ --hidden-import=PIL.Image --hidden-import=PIL.ImageTk ^
+ --exclude-module=halfetgetorder.keys ^
+ --add-data "src/halfetgetorder/resources;halfetgetorder/resources" ^
+ --name %INTERNAL_NAME% --icon=%ICON_PATH% entry.py
 
 IF ERRORLEVEL 1 (
     echo.
@@ -190,9 +192,9 @@ pause
 goto MENU
 
 
-REM ─────────────────────────────────────────
+REM -----------------------------------------
 REM Python / PyInstaller 확인 서브루틴
-REM ─────────────────────────────────────────
+REM -----------------------------------------
 :CHECK_PYTHON
 "%PYTHON_EXE%" --version >nul 2>&1
 if not errorlevel 1 goto CP_OK
@@ -243,9 +245,9 @@ if errorlevel 1 (
 goto :EOF
 
 
-REM ─────────────────────────────────────────
+REM -----------------------------------------
 REM 3. 최근 빌드된 exe 실행
-REM ─────────────────────────────────────────
+REM -----------------------------------------
 :RUN_LAST
 cls
 echo [INFO] 최근 빌드된 exe 를 찾는 중입니다...
@@ -297,9 +299,9 @@ pause
 goto MENU
 
 
-REM ─────────────────────────────────────────
+REM -----------------------------------------
 REM 종료
-REM ─────────────────────────────────────────
+REM -----------------------------------------
 :END
 ENDLOCAL
 exit /b

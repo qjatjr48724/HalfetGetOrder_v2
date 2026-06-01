@@ -74,7 +74,10 @@ class AppStore:
         self._keys_path = self.base_dir / "keys.enc"
         self._keys_local_path = self.base_dir / "keys.local"
         self._runtime_key_path = self.base_dir / "runtime.key"
-        self._last_run_path = self.base_dir / "godo_last_run.json"
+        self._last_run_path = self.base_dir / "last_run.json"
+        legacy_last_run = self.base_dir / "godo_last_run.json"
+        if not self._last_run_path.exists() and legacy_last_run.exists():
+            legacy_last_run.rename(self._last_run_path)
         self._pending_master: bytes | None = None
 
     @property

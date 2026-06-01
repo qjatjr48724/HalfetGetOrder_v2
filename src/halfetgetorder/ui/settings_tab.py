@@ -8,6 +8,7 @@ from tkinter import filedialog, messagebox
 from ..security import AppStore, PasswordValidationError, check_admin_password_pair
 from .api_key_dialogs import open_api_key_manager
 from .dialogs import ask_password
+from .integration_guide_dialogs import show_integration_guide
 from .layout import fix_window_size, form_scroll_body, form_section, pack_section
 
 
@@ -71,26 +72,29 @@ class SettingsTab(ctk.CTkFrame):
             ),
         )
 
-        # 가이드 (추후)
         sec_guide = form_section(
             body,
-            "연동 가이드",
-            desc="고도몰·쿠팡 설정 가이드는 추후 업데이트 예정입니다.",
+            "API 확인 가이드",
+            desc="IP 등록·API 키 발급·프로그램에 키 반영 방법을 안내합니다.",
             pady=(0, 4),
         )
         row_g = ctk.CTkFrame(sec_guide, fg_color="transparent")
         pack_section(row_g)
         ctk.CTkButton(
             row_g,
-            text="고도몰 관리자 (준비 중)",
-            state="disabled",
-            width=160,
+            text="고도몰 API 확인 가이드",
+            width=180,
+            command=lambda: show_integration_guide(
+                self.winfo_toplevel(), "godo"
+            ),
         ).pack(side="left", padx=(0, 8))
         ctk.CTkButton(
             row_g,
-            text="쿠팡 Wing (준비 중)",
-            state="disabled",
-            width=160,
+            text="쿠팡 Wing API 확인 가이드",
+            width=180,
+            command=lambda: show_integration_guide(
+                self.winfo_toplevel(), "coupang"
+            ),
         ).pack(side="left")
 
     def _open_api_key_manager(self):

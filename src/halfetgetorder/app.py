@@ -1,7 +1,8 @@
 import sys
 
+from .job_cooldown import record_last_run
 from .runner import run_order_job
-from .security.store import ApiKeys, AppStore
+from .security.store import AppStore
 
 
 def _pause_before_exit():
@@ -25,7 +26,9 @@ def main():
             return
 
         keys = store.load_api_keys()
-        run_order_job(store, keys, log=_print_log, progress=lambda _: None)
+        result = run_order_job(store, keys, log=_print_log, progress=lambda _: None)
+        if result.get("success"):
+            record_last_run(store.last_run_path)
     finally:
         _pause_before_exit()
 

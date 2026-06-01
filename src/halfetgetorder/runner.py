@@ -9,6 +9,11 @@ from datetime import date, datetime
 from typing import Any
 
 from . import config, coupang, godo
+from .job_cooldown import (
+    format_block_message,
+    get_last_run_datetime,
+    get_remaining_seconds,
+)
 from .io_excel import (
     create_label_workbook,
     create_orders_workbook,
@@ -18,9 +23,6 @@ from .security.store import ApiKeys, AppStore
 
 LogFn = Callable[[str], None]
 ProgressFn = Callable[[float], None]
-
-MIN_INTERVAL_MINUTES = 2
-
 
 def _save_error_message(path: str, exc: Exception) -> str:
     if isinstance(exc, PermissionError) or getattr(exc, "errno", None) == 13:
@@ -94,27 +96,17 @@ def run_order_job(
     )
 
     _prog(5)
-    last_run_path = str(store.last_run_path)
+    last_run_path = store.last_run_path
     now = datetime.now()
 
     try:
-        if os.path.exists(last_run_path):
-            with open(last_run_path, encoding="utf-8") as f:
-                info = json.load(f)
-            last_ts = info.get("ts")
-            if last_ts:
-                last_dt = datetime.fromisoformat(last_ts)
-                elapsed = (now - last_dt).total_seconds()
-                if elapsed < MIN_INTERVAL_MINUTES * 60:
-                    remain = int(MIN_INTERVAL_MINUTES * 60 - elapsed)
-                    msg = (
-                        f"⚠️ 고도몰 API 보호: 최소 {MIN_INTERVAL_MINUTES}분 간격이 필요합니다.\n"
-                        f"   마지막 실행: {last_dt.strftime('%Y-%m-%d %H:%M:%S')}\n"
-                        f"   약 {remain}초 후 다시 시도해 주세요."
-                    )
-                    _log(msg)
-                    result["error"] = msg
-                    return result
+        remain = get_remaining_seconds(last_run_path, now=now)
+        if remain > 0:
+            last_dt = get_last_run_datetime(last_run_path)
+            msg = format_block_message(remain, last_dt=last_dt)
+            _log(msg)
+            result["error"] = msg
+            return result
     except Exception as e:
         _log(f"⚠️ 실행 간격 확인 중 오류 (계속 진행): {e}")
 
@@ -126,12 +118,6 @@ def run_order_job(
     _log("고도몰 주문 조회 중...")
     godo_json = godo.fetch_orders()
     grouped = godo.group_sets(godo_json)
-
-    try:
-        with open(last_run_path, "w", encoding="utf-8") as f:
-            json.dump({"ts": now.isoformat()}, f)
-    except Exception as e:
-        _log(f"⚠️ 마지막 실행 시각 저장 실패: {e}")
 
     _prog(40)
     filtered_orders: list = []

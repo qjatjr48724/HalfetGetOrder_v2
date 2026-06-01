@@ -7,6 +7,14 @@ import threading
 import customtkinter as ctk
 from tkinter import messagebox
 
+from ..job_cooldown import (
+    MIN_INTERVAL_MINUTES,
+    format_block_message,
+    format_remaining_hms,
+    get_last_run_datetime,
+    get_remaining_seconds,
+    record_last_run,
+)
 from ..runner import run_order_job
 from ..security.store import AppStore
 
@@ -16,7 +24,10 @@ class BuildTab(ctk.CTkFrame):
         super().__init__(master, **kwargs)
         self.store = store
         self._running = False
+        self._cooldown_tick_id: str | None = None
         self._build_ui()
+        self._schedule_cooldown_tick()
+        self.bind("<Destroy>", self._on_destroy, add="+")
 
     def _build_ui(self):
         top = ctk.CTkFrame(self, fg_color="transparent")
@@ -34,6 +45,16 @@ class BuildTab(ctk.CTkFrame):
 
         self.lbl_out = ctk.CTkLabel(top, text="", anchor="w")
         self.lbl_out.pack(side="left", padx=16)
+
+        cooldown_row = ctk.CTkFrame(self, fg_color="transparent")
+        cooldown_row.pack(fill="x", padx=12, pady=(0, 4))
+        self.lbl_cooldown = ctk.CTkLabel(
+            cooldown_row,
+            text="",
+            anchor="w",
+            font=ctk.CTkFont(size=13),
+        )
+        self.lbl_cooldown.pack(anchor="w")
 
         self.log = ctk.CTkTextbox(self, height=320)
         self.log.pack(fill="both", expand=True, padx=12, pady=(0, 8))
@@ -62,8 +83,54 @@ class BuildTab(ctk.CTkFrame):
     def _set_progress(self, value: float):
         self.progress.set(value / 100.0)
 
+    def _on_destroy(self, _event=None) -> None:
+        if self._cooldown_tick_id is not None:
+            try:
+                self.after_cancel(self._cooldown_tick_id)
+            except Exception:
+                pass
+            self._cooldown_tick_id = None
+
+    def _get_cooldown_remaining(self) -> int:
+        return get_remaining_seconds(self.store.last_run_path)
+
+    def _update_cooldown_ui(self) -> None:
+        remain = self._get_cooldown_remaining()
+        if remain > 0:
+            self.lbl_cooldown.configure(
+                text=(
+                    f"고도몰·쿠팡 API 재실행 대기 ({MIN_INTERVAL_MINUTES}분 제한) — "
+                    f"남은 시간 {format_remaining_hms(remain)}"
+                ),
+                text_color="#E67E22",
+            )
+            if not self._running:
+                self.btn_run.configure(state="disabled")
+        else:
+            self.lbl_cooldown.configure(text="", text_color="gray")
+            if not self._running:
+                self.btn_run.configure(state="normal")
+
+    def _schedule_cooldown_tick(self) -> None:
+        self._update_cooldown_ui()
+        self._cooldown_tick_id = self.after(1000, self._schedule_cooldown_tick)
+
+    def _on_job_success(self, files: list[str]) -> None:
+        """완료 팝업이 뜨는 시점부터 2분 재실행 대기를 시작합니다."""
+        record_last_run(self.store.last_run_path)
+        self._update_cooldown_ui()
+        messagebox.showinfo(
+            "완료",
+            f"{len(files)}개 파일이 생성되었습니다.\n\n" + "\n".join(files),
+        )
+
     def _on_run(self):
         if self._running:
+            return
+        remain = self._get_cooldown_remaining()
+        if remain > 0:
+            last_dt = get_last_run_datetime(self.store.last_run_path)
+            messagebox.showwarning("대기 필요", format_block_message(remain, last_dt=last_dt))
             return
         setup = self.store.load_setup()
         if not setup.get("install_done"):
@@ -110,20 +177,14 @@ class BuildTab(ctk.CTkFrame):
                         )
                 elif result.get("success"):
                     files = result.get("files", [])
-                    self.after(
-                        0,
-                        lambda: messagebox.showinfo(
-                            "완료",
-                            f"{len(files)}개 파일이 생성되었습니다.\n\n" + "\n".join(files),
-                        ),
-                    )
+                    self.after(0, lambda f=files: self._on_job_success(f))
             except Exception as e:
                 self.after(0, lambda: messagebox.showerror("오류", str(e)))
                 self.after(0, lambda: self._append_log(f"❌ 오류: {e}"))
             finally:
                 def done():
                     self._running = False
-                    self.btn_run.configure(state="normal")
+                    self._update_cooldown_ui()
 
                 self.after(0, done)
 
