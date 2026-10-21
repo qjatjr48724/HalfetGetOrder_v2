@@ -26,7 +26,9 @@ def save_godo_orders_json(output_dir: str | None = None) -> str:
 
     # 2) 고도몰 주문 가져오기
     #    godo.fetch_orders() 는 날짜를 내부에서 처리하도록 그대로 사용
-    godo_json = godo.fetch_orders()
+    godo_json, err = godo.fetch_orders()
+    if err:
+        raise RuntimeError(err)
 
     # 3) 파일명 만들기
     now = datetime.now()

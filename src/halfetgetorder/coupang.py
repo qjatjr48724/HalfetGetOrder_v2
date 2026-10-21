@@ -9,7 +9,26 @@ METHOD = "GET"
 DOMAIN = "https://api-gateway.coupang.com"
 VENDOR_ID = "A01093941"
 
-def fetch_orders(created_from=None, created_to=None):
+
+def _snippet(text: str, limit: int = 300) -> str:
+    text = " ".join((text or "").split())
+    if len(text) <= limit:
+        return text or "(빈 응답)"
+    return text[:limit] + "..."
+
+
+def _http_error_message(code: int, reason: str, body: str) -> str:
+    lines = [
+        f"❌ 쿠팡 API HTTP 오류 (상태코드 {code}, {reason})",
+        f"   응답: {_snippet(body)}",
+    ]
+    if code == 401:
+        lines.append("   Wing에서 Access Key·Secret Key와 이 PC의 등록 IP를 확인해 주세요.")
+    return "\n".join(lines)
+
+
+def fetch_orders(created_from=None, created_to=None) -> tuple[str, str | None]:
+    """성공 시 (응답 본문, None), 실패 시 ("", 로그용 오류 메시지)."""
     if created_from is None: created_from = str(date.today() - timedelta(days=7))
     if created_to   is None: created_to   = str(date.today())
 
@@ -58,7 +77,8 @@ def fetch_orders(created_from=None, created_to=None):
     DEFAULT_TIMEOUT = 90
     try:
         resp = urllib.request.urlopen(req, context=ctx, timeout=DEFAULT_TIMEOUT)
-        return resp.read().decode(resp.headers.get_content_charset() or "utf-8")
+        body = resp.read().decode(resp.headers.get_content_charset() or "utf-8")
+        return body, None
     except urllib.error.HTTPError as e:
         # 쿠팡이 내려주는 에러 본문까지 같이 출력 (gzip 등 압축도 해제 시도)
         try:
@@ -88,20 +108,13 @@ def fetch_orders(created_from=None, created_to=None):
         except Exception:
             err_body = "<본문 읽기 실패>"
 
-        print("❌ 쿠팡 API HTTP 오류:")
-        print("   - 상태코드:", e.code)
-        print("   - 사유:", e.reason)
-        print("   - 응답본문:", err_body)
-        return ""
-
+        return "", _http_error_message(e.code, str(e.reason), err_body)
 
     except urllib.error.URLError as e:
-        print("❌ 쿠팡 API 네트워크 오류:", e.reason)
-        return ""
+        return "", f"❌ 쿠팡 API 네트워크 오류: {e.reason}"
 
     except Exception as e:
-        print("❌ 쿠팡 API 일반 오류:", repr(e))
-        return ""
+        return "", f"❌ 쿠팡 API 오류: {e!r}"
 
     
 

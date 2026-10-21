@@ -76,7 +76,18 @@ def fetch_add_goods_map(refresh=False):
     return {}
 
 
-def fetch_orders(created_from=None, created_to=None):
+def _response_snippet(text: str, limit: int = 300) -> str:
+    text = " ".join((text or "").split())
+    if len(text) <= limit:
+        return text or "(빈 응답)"
+    return text[:limit] + "..."
+
+
+def fetch_orders(created_from=None, created_to=None) -> tuple[dict, str | None]:
+    """성공 시 (파싱된 주문, None), 실패 시 ({}, 로그용 오류 메시지).
+
+    요청 URL에는 API 키가 있으므로 오류 메시지에 URL을 넣지 않는다.
+    """
     if created_from is None:
         created_from = str(date.today() - timedelta(days=7))
     if created_to is None:
@@ -88,7 +99,10 @@ def fetch_orders(created_from=None, created_to=None):
         f"&startDate={created_from}&endDate={created_to}"
         "&dateType=order&orderStatus=g1"
     )
-    r = requests.post(url, timeout=30)
+    try:
+        r = requests.post(url, timeout=30)
+    except requests.RequestException as e:
+        return {}, f"❌ 고도몰 API 네트워크 오류: {e}"
 
     ctype = (r.headers.get('Content-Type') or '').lower()
     if 'euc-kr' in ctype or 'cp949' in ctype:
@@ -96,7 +110,19 @@ def fetch_orders(created_from=None, created_to=None):
     elif not r.encoding:
         r.encoding = 'utf-8'
 
-    return xmltodict.parse(r.text)
+    if r.status_code >= 400:
+        return {}, (
+            f"❌ 고도몰 API HTTP 오류 (상태코드 {r.status_code})\n"
+            f"   응답: {_response_snippet(r.text)}"
+        )
+
+    try:
+        return xmltodict.parse(r.text), None
+    except Exception as e:
+        return {}, (
+            f"❌ 고도몰 응답 파싱 오류: {e}\n"
+            f"   응답: {_response_snippet(r.text)}"
+        )
 
 
 def _extract_option_info(raw):

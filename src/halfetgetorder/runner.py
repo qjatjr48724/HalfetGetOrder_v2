@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Callable
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from . import config, coupang, godo
@@ -110,14 +110,31 @@ def run_order_job(
     except Exception as e:
         _log(f"⚠️ 실행 간격 확인 중 오류 (계속 진행): {e}")
 
+    created_from = str(date.today() - timedelta(days=7))
+    created_to = str(date.today())
+
     _prog(15)
-    _log("쿠팡 주문 조회 중...")
-    cp_body = coupang.fetch_orders()
+    _log(
+        f"쿠팡 주문 조회 중... ({created_from} ~ {created_to}, 상품준비중 INSTRUCT)"
+    )
+    cp_body, cp_err = coupang.fetch_orders(created_from, created_to)
+    if cp_err:
+        _log(cp_err)
+        save_errors.append(cp_err)
 
     _prog(30)
-    _log("고도몰 주문 조회 중...")
-    godo_json = godo.fetch_orders()
+    _log(f"고도몰 주문 조회 중... ({created_from} ~ {created_to})")
+    godo_json, godo_err = godo.fetch_orders(created_from, created_to)
+    if godo_err:
+        _log(godo_err)
+        save_errors.append(godo_err)
+        godo_json = {}
     grouped = godo.group_sets(godo_json)
+    if not godo_err:
+        if not grouped:
+            _log("ℹ️ 고도몰 주문 0건")
+        else:
+            _log(f"고도몰 수신 {len(grouped)}건")
 
     _prog(40)
     filtered_orders: list = []
@@ -126,7 +143,16 @@ def run_order_job(
     try:
         resp_json = json.loads(cp_body) if cp_body else {}
         orders = resp_json.get("data") or resp_json.get("content", []) or []
+        rental_excluded = sum(1 for od in orders if _is_rental_order(od))
         filtered_orders = [od for od in orders if not _is_rental_order(od)]
+        if cp_err:
+            _log("쿠팡 수신 0건 (API 오류)")
+        else:
+            _log(
+                f"쿠팡 수신 {len(orders)}건, "
+                f"렌탈/대여/임대 제외 {rental_excluded}건, "
+                f"엑셀 반영 {len(filtered_orders)}건"
+            )
 
         if "data" in resp_json:
             resp_json_filtered = dict(resp_json)
